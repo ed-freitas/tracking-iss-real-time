@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time ISS Tracker</title>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css">
+    <style>
+        #map { height: 500px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h2>Real-Time ISS Tracker</h2>
+    <p>Tracking the International Space Station in real time.</p>
+
+    <div id="map"></div>
+
+    <script>
+        let map = L.map('map').setView([0, 0], 3);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let issMarker = L.marker([0, 0]).addTo(map);
+        let issPath = L.polyline([], { color: 'red' }).addTo(map);
+
+        let predictedPath = L.polyline([], { color: 'blue', dashArray: "5, 5", weight: 3 }).addTo(map);
+
+        function updateISSLocation() {
+            fetch('/iss_data')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.error) {
+                        let lat = data.latitude;
+                        let lon = data.longitude;
+                        let altitude = data.altitude;
+                        let visibility = data.visibility;
+                        let trajectory = data.trajectory;
+
+                        issMarker.setLatLng([lat, lon])
+                            .bindPopup(`Altitude: ${data.altitude.toFixed(2)} km<br>Visibility: ${data.visibility}`)
+                            .openPopup();
+
+                        issPath.setLatLngs(trajectory);
+                        map.panTo([lat, lon]);
+
+                        fetchPredictedTrajectory();
+                        checkISSAlerts(lat, lon);
+                    }
+                })
+                .catch(error => console.log("Error fetching ISS data: ", error));
+        }
+
+        function fetchPredictedTrajectory() {
+            fetch(`/iss_trajectory`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.trajectory.length > 0) {
+                        let trajectoryCoords = data.trajectory.map(pass => [pass.lat, pass.lon]);
+                        predictedPath.setLatLngs(trajectoryCoords);
+                    }
+                })
+                .catch(error => console.log("Error fetching predicted ISS trajectory: ", error));
+        }
+
+        function checkISSAlerts(lat, lon) {
+            fetch(`/iss_alerts?lat=${lat}&lon=${lon}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.alert) {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => console.log("Error fetching ISS visibility window: ", error));
+        }
+        
+        setInterval(updateISSLocation, 5000);
+        updateISSLocation();
+
+        if (Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
+    </script>
+</body>
+</html>
